@@ -1,0 +1,31 @@
+name: PAT probe
+on:
+  workflow_dispatch:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      T: ${{ secrets.GH_AUTOMERGE_TOKENT }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Context
+        run: |
+          echo "event=${{ github.event_name }} actor=${{ github.actor }}"
+          echo "token set: ${T:+yes}"
+          echo "fingerprint: $(printf %s "$T" | sha256sum | cut -c1-8)"
+
+      - name: Probe
+        run: |
+          code() { curl -s -o /dev/null -w "%{http_code}" -X "$1" \
+            -H "Authorization: Bearer $T" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/$2" "${@:3}"; }
+
+          echo "user:            $(curl -s -H "Authorization: Bearer $T" https://api.github.com/user | jq -r .login)"
+          echo "read PR 22:      $(code GET pulls/22)"
+          echo "approve probe:   $(code POST pulls/999999/reviews -d '{"event":"APPROVE"}')"
+          echo "merge probe:     $(code PUT pulls/999999/merge)"
