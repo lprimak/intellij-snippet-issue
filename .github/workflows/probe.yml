@@ -10,7 +10,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     env:
-      T: ${{ secrets.GH_AUTOMERGE_TOKENT }}
+      T: ${{ secrets.GH_AUTOMERGE_TOKEN }}
       REPO: ${{ github.repository }}
     steps:
       - name: Context
