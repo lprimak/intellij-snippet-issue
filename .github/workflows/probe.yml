@@ -1,31 +1,41 @@
-name: PAT probe
+name: PAT write probe
 on:
-  workflow_dispatch:
   pull_request_target:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to probe
+        required: true
 
 permissions:
   contents: read
 
 jobs:
   probe:
+    if: github.actor == 'dependabot[bot]' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       T: ${{ secrets.GH_AUTOMERGE_TOKEN }}
       REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
     steps:
       - name: Context
         run: |
-          echo "event=${{ github.event_name }} actor=${{ github.actor }}"
+          echo "event=${{ github.event_name }} actor=${{ github.actor }} repo=$REPO pr=$PR"
           echo "token set: ${T:+yes}"
           echo "fingerprint: $(printf %s "$T" | sha256sum | cut -c1-8)"
 
-      - name: Probe
+      - name: Identity and read
         run: |
-          code() { curl -s -o /dev/null -w "%{http_code}" -X "$1" \
-            -H "Authorization: Bearer $T" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/$2" "${@:3}"; }
+          echo "user:       $(curl -s -H "Authorization: Bearer $T" https://api.github.com/user | jq -r .login)"
+          echo "read PR:    $(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $T" https://api.github.com/repos/$REPO/pulls/$PR)"
 
-          echo "user:            $(curl -s -H "Authorization: Bearer $T" https://api.github.com/user | jq -r .login)"
-          echo "read PR 22:      $(code GET pulls/22)"
-          echo "approve probe:   $(code POST pulls/999999/reviews -d '{"event":"APPROVE"}')"
-          echo "merge probe:     $(code PUT pulls/999999/merge)"
+      - name: Real write test (comment-only review)
+        run: |
+          curl -s -i -X POST \
+            -H "Authorization: Bearer $T" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/$REPO/pulls/$PR/reviews \
+            -d '{"event":"COMMENT","body":"PAT write test"}' \
+            | grep -iE '^(HTTP|x-accepted-github-permissions|x-github-request-id)|"message"'
+
